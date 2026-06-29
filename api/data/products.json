@@ -1,0 +1,23 @@
+[
+  {
+    "product_id": "P001",
+    "name": "笔记本电脑",
+    "price": 5999,
+    "stock": 50,
+    "category": "电子产品"
+  },
+  {
+    "product_id": "P002",
+    "name": "无线鼠标",
+    "price": 99,
+    "stock": 200,
+    "category": "配件"
+  },
+  {
+    "product_id": "P003",
+    "name": "机械键盘",
+    "price": 399,
+    "stock": 100,
+    "category": "配件"
+  }
+]

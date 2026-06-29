@@ -1,6 +1,7 @@
 #!/bin/bash
 # ============================================================
-# 部署 API 项目到服务器并配置 Nginx
+# API 项目部署脚本（服务器端）
+# 在服务器上运行，配置 Nginx 指向 API 目录
 # ============================================================
 
 set -e
@@ -12,38 +13,38 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m'
 
-# 服务器配置
-SERVER_HOST="192.168.2.87"
-SERVER_USER="ubuntu"
-SERVER_PORT="22"
-SERVER_PASSWORD="Aa123456"
-
 # 路径配置
-LOCAL_API_DIR="./api"
-REMOTE_API_DIR="/var/www/api"
+API_DIR="/home/ubuntu/zhaon/ttgame/api"
 
 echo -e "${BLUE}============================================================${NC}"
 echo -e "${BLUE}  API 项目部署脚本${NC}"
 echo -e "${BLUE}============================================================${NC}"
 echo ""
 
-# 检查本地 api 目录是否存在
-if [ ! -d "$LOCAL_API_DIR" ]; then
-    echo -e "${RED}错误: api 目录不存在${NC}"
+# 检查 API 目录是否存在
+if [ ! -d "$API_DIR" ]; then
+    echo -e "${RED}错误: API 目录不存在: $API_DIR${NC}"
+    echo -e "${YELLOW}请先运行 scp_to_server.sh 上传 api 目录${NC}"
     exit 1
 fi
 
-echo -e "${GREEN}✓ 找到 API 项目目录${NC}"
+echo -e "${GREEN}✓ 找到 API 目录: $API_DIR${NC}"
+
+# 检查是否有必要文件
+if [ ! -f "$API_DIR/index.php" ]; then
+    echo -e "${RED}错误: index.php 不存在${NC}"
+    exit 1
+fi
+
+echo -e "${GREEN}✓ 验证文件完整性${NC}"
 echo ""
 
-# 显示将要上传的文件
+# 显示项目文件
 echo -e "${YELLOW}项目文件：${NC}"
-echo "  • index.php"
-echo "  • scripts/ (3 个脚本)"
-echo "  • data/ (2 个 JSON 文件)"
+ls -lh "$API_DIR" | tail -n +2 | awk '{print "  • " $9 " (" $5 ")"}'
 echo ""
 
-read -p "确认部署到 $SERVER_USER@$SERVER_HOST？(y/n): " -n 1 -r
+read -p "确认配置 Nginx 指向 $API_DIR？(y/n): " -n 1 -r
 echo ""
 
 if [[ ! $REPLY =~ ^[Yy]$ ]]; then
@@ -52,52 +53,39 @@ if [[ ! $REPLY =~ ^[Yy]$ ]]; then
 fi
 
 echo ""
-echo -e "${BLUE}[1/4] 上传项目文件...${NC}"
+echo -e "${BLUE}[1/4] 设置目录权限（确保 Nginx 可以访问）...${NC}"
 
-# 检查是否有 sshpass
-USE_SSHPASS=false
-if command -v sshpass &> /dev/null; then
-    USE_SSHPASS=true
-    SCP_CMD="sshpass -p $SERVER_PASSWORD scp -r -P $SERVER_PORT -o StrictHostKeyChecking=no"
-    SSH_CMD="sshpass -p $SERVER_PASSWORD ssh -p $SERVER_PORT -o StrictHostKeyChecking=no"
-else
-    SCP_CMD="scp -r -P $SERVER_PORT"
-    SSH_CMD="ssh -p $SERVER_PORT"
+# 给父目录添加执行权限（让 www-data 可以穿透）
+sudo chmod o+x /home/ubuntu
+sudo chmod o+x /home/ubuntu/zhaon
+sudo chmod o+x /home/ubuntu/zhaon/ttgame
+
+# 设置 API 目录的所有者和权限
+sudo chown -R www-data:www-data "$API_DIR"
+sudo chmod -R 755 "$API_DIR"
+
+# 给脚本执行权限
+if [ -d "$API_DIR/scripts" ]; then
+    sudo chmod +x "$API_DIR/scripts"/*.sh
 fi
 
-# 上传 index.php
-echo "  上传 index.php..."
-$SCP_CMD "$LOCAL_API_DIR/index.php" "$SERVER_USER@$SERVER_HOST:$REMOTE_API_DIR/"
-
-# 上传 scripts 目录
-echo "  上传 scripts/..."
-$SCP_CMD "$LOCAL_API_DIR/scripts/"* "$SERVER_USER@$SERVER_HOST:$REMOTE_API_DIR/scripts/"
-
-# 上传 data 目录
-echo "  上传 data/..."
-$SCP_CMD "$LOCAL_API_DIR/data/"* "$SERVER_USER@$SERVER_HOST:$REMOTE_API_DIR/data/"
-
-echo -e "${GREEN}✓ 文件上传完成${NC}"
-echo ""
-
-echo -e "${BLUE}[2/4] 设置文件权限...${NC}"
-
-$SSH_CMD "$SERVER_USER@$SERVER_HOST" "sudo chown -R www-data:www-data $REMOTE_API_DIR && \
-sudo chmod -R 755 $REMOTE_API_DIR && \
-sudo chmod +x $REMOTE_API_DIR/scripts/*.sh"
+# 确保 logs 目录存在
+sudo mkdir -p "$API_DIR/logs"
+sudo chown www-data:www-data "$API_DIR/logs"
 
 echo -e "${GREEN}✓ 权限设置完成${NC}"
 echo ""
 
-echo -e "${BLUE}[3/4] 配置 Nginx...${NC}"
+echo -e "${BLUE}[2/4] 配置 Nginx...${NC}"
 
-# 创建 Nginx 配置（使用变量替换）
-$SSH_CMD "$SERVER_USER@$SERVER_HOST" "sudo tee /etc/nginx/sites-available/api > /dev/null" <<EOF
+# 创建 Nginx 配置
+sudo tee /etc/nginx/sites-available/api > /dev/null <<EOF
 server {
-    listen 80;
-    server_name localhost;
+    listen 80 default_server;
+    listen [::]:80 default_server;
+    server_name _;
 
-    root $REMOTE_API_DIR;
+    root $API_DIR;
     index index.php index.html;
 
     access_log /var/log/nginx/api_access.log;
@@ -131,31 +119,71 @@ server {
 }
 EOF
 
-# 启用站点
-$SSH_CMD "$SERVER_USER@$SERVER_HOST" "sudo ln -sf /etc/nginx/sites-available/api /etc/nginx/sites-enabled/api"
+# 禁用默认站点（如果存在）
+if [ -f /etc/nginx/sites-enabled/default ]; then
+    echo "  禁用默认站点..."
+    sudo rm -f /etc/nginx/sites-enabled/default
+fi
+
+# 启用 API 站点
+sudo ln -sf /etc/nginx/sites-available/api /etc/nginx/sites-enabled/api
 
 # 测试 Nginx 配置
-$SSH_CMD "$SERVER_USER@$SERVER_HOST" "sudo nginx -t"
+echo "  测试 Nginx 配置..."
+sudo nginx -t
 
 # 重启 Nginx
-$SSH_CMD "$SERVER_USER@$SERVER_HOST" "sudo systemctl reload nginx"
+echo "  重启 Nginx..."
+sudo systemctl restart nginx
 
 echo -e "${GREEN}✓ Nginx 配置完成${NC}"
 echo ""
 
-echo -e "${BLUE}[4/4] 验证部署...${NC}"
+echo -e "${BLUE}[3/4] 验证部署...${NC}"
 
 # 等待服务重启
 sleep 2
 
 # 测试 API
 echo "  测试 API 接口..."
-API_RESPONSE=$($SSH_CMD "$SERVER_USER@$SERVER_HOST" "curl -s http://localhost/api")
+API_RESPONSE=$(curl -s http://localhost/api)
 
 if echo "$API_RESPONSE" | grep -q "MongoDB & Shell API"; then
     echo -e "${GREEN}✓ API 响应正常${NC}"
+elif echo "$API_RESPONSE" | grep -q "404"; then
+    echo -e "${RED}✗ API 返回 404${NC}"
+    echo -e "${YELLOW}检查文件: ls -la $API_DIR/${NC}"
 else
-    echo -e "${YELLOW}! API 响应异常，请检查日志${NC}"
+    echo -e "${YELLOW}! API 响应异常${NC}"
+    echo -e "${YELLOW}响应内容: $API_RESPONSE${NC}"
+fi
+
+# 显示部署的文件列表
+echo ""
+echo -e "${YELLOW}API 目录内容：${NC}"
+ls -lh "$API_DIR" | tail -n +2 | awk '{print "  • " $9 " (" $5 ")"}'
+
+echo ""
+echo -e "${BLUE}[4/4] 测试其他接口...${NC}"
+
+# 测试健康检查
+echo "  测试健康检查..."
+HEALTH_RESPONSE=$(curl -s http://localhost/api/health)
+if echo "$HEALTH_RESPONSE" | grep -q "ok"; then
+    echo -e "${GREEN}✓ 健康检查正常${NC}"
+else
+    echo -e "${YELLOW}! 健康检查异常${NC}"
+fi
+
+# 测试脚本执行
+echo "  测试脚本执行..."
+SCRIPT_RESPONSE=$(curl -s -X POST http://localhost/api/exec-script \
+    -H "Content-Type: application/json" \
+    -d '{"script": "test.sh", "args": ["deploy", "test"]}')
+if echo "$SCRIPT_RESPONSE" | grep -q "success"; then
+    echo -e "${GREEN}✓ 脚本执行正常${NC}"
+else
+    echo -e "${YELLOW}! 脚本执行异常${NC}"
 fi
 
 echo ""
@@ -164,9 +192,8 @@ echo -e "${GREEN}部署完成！${NC}"
 echo -e "${BLUE}============================================================${NC}"
 echo ""
 echo -e "访问地址："
-echo -e "  • API 信息: ${GREEN}http://$SERVER_HOST/api${NC}"
-echo -e "  • 健康检查: ${GREEN}http://$SERVER_HOST/api/health${NC}"
-echo -e "  • PHP 测试: ${GREEN}http://$SERVER_HOST/info.php${NC}"
+echo -e "  • API 信息: ${GREEN}http://192.168.2.87/api${NC}"
+echo -e "  • 健康检查: ${GREEN}http://192.168.2.87/api/health${NC}"
 echo ""
 echo -e "日志位置："
 echo -e "  • Nginx 访问日志: /var/log/nginx/api_access.log"
@@ -176,21 +203,21 @@ echo ""
 echo -e "${YELLOW}测试命令示例：${NC}"
 echo ""
 echo -e "# 1. 获取 API 信息"
-echo -e "curl http://$SERVER_HOST/api"
+echo -e "${CYAN}curl http://192.168.2.87/api${NC}"
 echo ""
 echo -e "# 2. 健康检查"
-echo -e "curl http://$SERVER_HOST/api/health"
+echo -e "${CYAN}curl http://192.168.2.87/api/health${NC}"
 echo ""
 echo -e "# 3. 执行测试脚本"
-echo -e "curl -X POST http://$SERVER_HOST/api/exec-script \\"
-echo -e "  -H 'Content-Type: application/json' \\"
-echo -e "  -d '{\"script\": \"test.sh\", \"args\": [\"hello\", \"world\"]}'"
+echo -e "${CYAN}curl -X POST http://192.168.2.87/api/exec-script \\${NC}"
+echo -e "${CYAN}  -H 'Content-Type: application/json' \\${NC}"
+echo -e "${CYAN}  -d '{\"script\": \"test.sh\", \"args\": [\"hello\", \"world\"]}'${NC}"
 echo ""
 echo -e "# 4. 导入用户数据"
-echo -e "curl -X POST http://$SERVER_HOST/api/mongo/import \\"
-echo -e "  -H 'Content-Type: application/json' \\"
-echo -e "  -d '{\"collection\": \"users\", \"file\": \"users.json\"}'"
+echo -e "${CYAN}curl -X POST http://192.168.2.87/api/mongo/import \\${NC}"
+echo -e "${CYAN}  -H 'Content-Type: application/json' \\${NC}"
+echo -e "${CYAN}  -d '{\"collection\": \"users\", \"file\": \"users.json\"}'${NC}"
 echo ""
 echo -e "# 5. 查询用户数据"
-echo -e "curl 'http://$SERVER_HOST/api/mongo/query?collection=users&limit=10'"
+echo -e "${CYAN}curl 'http://192.168.2.87/api/mongo/query?collection=users&limit=10'${NC}"
 echo ""

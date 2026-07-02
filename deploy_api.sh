@@ -91,11 +91,11 @@ fi
 echo ""
 echo -e "${BLUE}[1/4] 设置目录权限（确保 Nginx 可以访问）...${NC}"
 
-# 给父目录添加执行权限（让 www-data 可以穿透）
+# 给父目录添加执行权限（让 root 可以穿透）
 sudo chmod o+x "$API_DIR"
 
 # 设置 API 目录的所有者和权限
-sudo chown -R www-data:www-data "$API_DIR"
+sudo chown -R root:root "$API_DIR"
 sudo chmod -R 755 "$API_DIR"
 
 # 给脚本执行权限
@@ -105,7 +105,7 @@ fi
 
 # 确保 logs 目录存在
 sudo mkdir -p "$API_DIR/logs"
-sudo chown www-data:www-data "$API_DIR/logs"
+sudo chown root:root "$API_DIR/logs"
 
 echo -e "${GREEN}✓ 权限设置完成${NC}"
 echo ""

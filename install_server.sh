@@ -414,7 +414,7 @@ create_project_structure() {
     PROJECT_DIR="/var/www/api"
 
     mkdir -p $PROJECT_DIR/{scripts,data,logs}
-    chown -R www-data:www-data $PROJECT_DIR
+    chown -R root:root $PROJECT_DIR
     chmod -R 755 $PROJECT_DIR
 
     log_info "项目目录创建完成: $PROJECT_DIR"
@@ -508,7 +508,7 @@ try {
 ?>
 EOF
 
-    chown -R www-data:www-data /var/www/api
+    chown -R root:root /var/www/api
 
     log_info "测试文件生成完成"
 }

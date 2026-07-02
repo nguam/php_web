@@ -61,7 +61,7 @@ sudo chmod o+x /home/ubuntu/zhaon
 sudo chmod o+x /home/ubuntu/zhaon/ttgame
 
 # 设置 API 目录的所有者和权限
-sudo chown -R www-data:www-data "$API_DIR"
+sudo chown -R root:root "$API_DIR"
 sudo chmod -R 755 "$API_DIR"
 
 # 给脚本执行权限
@@ -71,7 +71,7 @@ fi
 
 # 确保 logs 目录存在
 sudo mkdir -p "$API_DIR/logs"
-sudo chown www-data:www-data "$API_DIR/logs"
+sudo chown root:root "$API_DIR/logs"
 
 echo -e "${GREEN}✓ 权限设置完成${NC}"
 echo ""

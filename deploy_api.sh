@@ -113,10 +113,14 @@ echo ""
 echo -e "${BLUE}[2/5] 配置 Nginx...${NC}"
 
 # 修改 nginx.conf 中的运行用户为 root
-echo "  修改 Nginx 运行用户为 root..."
-sudo sed -i 's/^user www-data;/user root;/g' /etc/nginx/nginx.conf
-sudo sed -i 's/^user nginx;/user root;/g' /etc/nginx/nginx.conf
-echo -e "${GREEN}✓ Nginx 运行用户已设置为 root${NC}"
+if [ -f /etc/nginx/nginx.conf ]; then
+    echo "  修改 Nginx 运行用户为 root..."
+    sudo sed -i 's/^user www-data;/user root;/g' /etc/nginx/nginx.conf
+    sudo sed -i 's/^user nginx;/user root;/g' /etc/nginx/nginx.conf
+    echo -e "${GREEN}✓ Nginx 运行用户已设置为 root${NC}"
+else
+    echo -e "${YELLOW}! /etc/nginx/nginx.conf 不存在，跳过用户修改${NC}"
+fi
 
 # 创建 Nginx 配置（使用检测到的 PHP 版本）
 sudo tee /etc/nginx/sites-available/api > /dev/null <<EOF
